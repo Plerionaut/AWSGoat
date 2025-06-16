@@ -150,82 +150,9 @@ Module 2: **$0.0505/hour**
 
 # Contributors
 
-Jeswin Mathai, Chief Architect, Lab Platform, INE  <jmathai@ine.com>
-
-Nishant Sharma, Director, Lab Platform, INE <nsharma@ine.com>
-
-Sanjeev Mahunta, Software Engineer (Cloud), INE <smahunta@ine.com>
-
-Shantanu Kale, Cloud Developer, INE  <skale@ine.com>
-
-Govind Krishna Lal Balaji, Cloud Developer, INE <lkris@ine.com> 
-
-Litesh Ghute, Software Engineer, INE <lghute@ine.com> 
-
-# Solutions
-
-The offensive manuals are available in the [attack-manuals](attack-manuals/) directory, and the defensive manuals are available in the [defence-manuals](defence-manuals/) directory. 
-
-Module 1 Exploitation Videos: <https://www.youtube.com/playlist?list=PLcIpBb4raSZEMosUmY8KpxPWtjKRMSmNx>
-
-
-[![11](https://user-images.githubusercontent.com/65826354/194854747-26a95cb7-7f8a-4d52-8a36-1ede79a62126.gif)](https://www.youtube.com/playlist?list=PLcIpBb4raSZEMosUmY8KpxPWtjKRMSmNx)
-
-
-
-# Documentation
-
-For more details refer to the "AWSGoat.pdf" PDF file. This file contains the slide deck used for presentations.
-
-# Screenshots
-
-Module 1:
-
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/65826354/179526784-2a1d7023-5c6f-4cfb-97b7-74b572b12829.png">
-</p>
-
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/65826354/179526796-fa4fa422-ffb5-4ff4-a2eb-1468e9c81fd6.png">
-</p>
-
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/65826354/179526801-6eb85d63-b7df-4fac-98f6-8afb834d2f49.png">
-</p>
-
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/65826354/179526804-78f87773-965d-4eee-a5bf-fb1c1d448234.png">
-</p>
-
-
-Module 2:
-
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/65826354/194800860-e7eaa174-0948-4d35-b185-0325ed7ddcf7.png">
-</p>
-
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/65826354/194801060-8ab1ba55-b97c-4cea-817d-0c517a1924b3.png">
-</p>
-
-
-## Contribution Guidelines
-
-* Contributions in the form of code improvements, module updates, feature improvements, and any general suggestions are welcome. 
-* Improvements to the functionalities of the current modules are also welcome. 
-* The source code for each module can be found in ``modules/module-<Number>/src`` this can be used to modify the existing application code.
-
-# License
-
-This program is free software: you can redistribute it and/or modify it under the terms of the MIT License.
-
-You should have received a copy of the MIT License along with this program. If not, see https://opensource.org/licenses/MIT.
-
-# Sister Projects
-
-- [AzureGoat](https://github.com/ine-labs/AzureGoat)
-- [GCPGoat](https://github.com/ine-labs/GCPGoat)
-- [PA Toolkit (Pentester Academy Wireshark Toolkit)](https://github.com/pentesteracademy/patoolkit)
-- [ReconPal: Leveraging NLP for Infosec](https://github.com/pentesteracademy/reconpal) 
-- [VoIPShark: Open Source VoIP Analysis Platform](https://github.com/pentesteracademy/voipshark)
-- [BLEMystique](https://github.com/pentesteracademy/blemystique)
+Alborz
+Edmund
+Ethan
+Senal
+Sam
+Keshav
