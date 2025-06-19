@@ -129,18 +129,19 @@ resource "aws_security_group" "database-security-group" {
 # Create Database Instance Restored from DB Snapshots
 # terraform aws db instance
 resource "aws_db_instance" "database-instance" {
-  identifier             = "aws-goat-db"
-  allocated_storage      = 10
-  instance_class         = "db.t3.micro"
-  engine                 = "mysql"
-  engine_version         = "8.0"
-  username               = "root"
-  password               = "T2kVB3zgeN3YbrKS"
-  parameter_group_name   = "default.mysql8.0"
-  skip_final_snapshot    = true
-  availability_zone      = "us-east-1a"
-  db_subnet_group_name   = aws_db_subnet_group.database-subnet-group.name
-  vpc_security_group_ids = [aws_security_group.database-security-group.id]
+  identifier              = "aws-goat-db"
+  allocated_storage       = 10
+  instance_class          = "db.t3.micro"
+  engine                  = "mysql"
+  engine_version          = "8.0"
+  username                = "root"
+  password                = "T2kVB3zgeN3YbrKS"
+  parameter_group_name    = "default.mysql8.0"
+  skip_final_snapshot     = true
+  availability_zone       = "us-east-1a"
+  db_subnet_group_name    = aws_db_subnet_group.database-subnet-group.name
+  vpc_security_group_ids  = [aws_security_group.database-security-group.id]
+  iam_database_authentication_enabled = true
 }
 
 
