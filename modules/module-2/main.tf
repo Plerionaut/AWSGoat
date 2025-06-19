@@ -17,6 +17,17 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
+# KMS key for encryption
+resource "aws_kms_key" "encryption_key" {
+  description             = "KMS key for encryption"
+  deletion_window_in_days = 7
+}
+
+resource "aws_kms_alias" "encryption_key_alias" {
+  name          = "alias/aws-goat-encryption"
+  target_key_id = aws_kms_key.encryption_key.key_id
+}
+
 # VPC Config for public access
 resource "aws_vpc" "lab-vpc" {
   cidr_block           = "10.0.0.0/16"
@@ -26,18 +37,34 @@ resource "aws_vpc" "lab-vpc" {
     Name = "AWS_GOAT_VPC"
   }
 }
-resource "aws_subnet" "lab-subnet-public-1" {
+
+resource "aws_subnet" "lab-subnet-private-1" {
   vpc_id                  = aws_vpc.lab-vpc.id
   cidr_block              = "10.0.1.0/24"
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
   availability_zone       = data.aws_availability_zones.available.names[0]
+  tags = {
+    Name = "Private Subnet 1"
+  }
 }
+
+resource "aws_subnet" "lab-subnet-private-1b" {
+  vpc_id                  = aws_vpc.lab-vpc.id
+  cidr_block              = "10.0.128.0/24"
+  availability_zone       = data.aws_availability_zones.available.names[1]
+  map_public_ip_on_launch = false
+  tags = {
+    Name = "Private Subnet 2"
+  }
+}
+
 resource "aws_internet_gateway" "my_vpc_igw" {
   vpc_id = aws_vpc.lab-vpc.id
   tags = {
     Name = "My VPC - Internet Gateway"
   }
 }
+
 resource "aws_route_table" "my_vpc_us_east_1_public_rt" {
   vpc_id = aws_vpc.lab-vpc.id
   route {
@@ -51,17 +78,12 @@ resource "aws_route_table" "my_vpc_us_east_1_public_rt" {
 }
 
 resource "aws_route_table_association" "my_vpc_us_east_1a_public" {
-  subnet_id      = aws_subnet.lab-subnet-public-1.id
+  subnet_id      = aws_subnet.lab-subnet-private-1.id
   route_table_id = aws_route_table.my_vpc_us_east_1_public_rt.id
 }
-resource "aws_subnet" "lab-subnet-public-1b" {
-  vpc_id                  = aws_vpc.lab-vpc.id
-  cidr_block              = "10.0.128.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[1]
-  map_public_ip_on_launch = true
-}
+
 resource "aws_route_table_association" "my_vpc_us_east_1b_public" {
-  subnet_id      = aws_subnet.lab-subnet-public-1b.id
+  subnet_id      = aws_subnet.lab-subnet-private-1b.id
   route_table_id = aws_route_table.my_vpc_us_east_1_public_rt.id
 }
 
@@ -71,6 +93,7 @@ resource "aws_security_group" "ecs_sg" {
   vpc_id      = aws_vpc.lab-vpc.id
 
   ingress {
+    description     = "Allow traffic from load balancer"
     from_port       = 0
     to_port         = 65535
     protocol        = "tcp"
@@ -78,6 +101,7 @@ resource "aws_security_group" "ecs_sg" {
   }
 
   egress {
+    description = "Allow all outbound traffic"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -86,10 +110,9 @@ resource "aws_security_group" "ecs_sg" {
 }
 
 # Create Database Subnet Group
-# terraform aws db subnet group
 resource "aws_db_subnet_group" "database-subnet-group" {
   name        = "database subnets"
-  subnet_ids  = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  subnet_ids  = [aws_subnet.lab-subnet-private-1.id, aws_subnet.lab-subnet-private-1b.id]
   description = "Subnets for Database Instance"
 
   tags = {
@@ -98,8 +121,6 @@ resource "aws_db_subnet_group" "database-subnet-group" {
 }
 
 # Create Security Group for the Database
-# terraform aws create security group
-
 resource "aws_security_group" "database-security-group" {
   name        = "Database Security Group"
   description = "Enable MYSQL Aurora access on Port 3306"
@@ -114,6 +135,7 @@ resource "aws_security_group" "database-security-group" {
   }
 
   egress {
+    description = "Allow all outbound traffic"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -123,27 +145,53 @@ resource "aws_security_group" "database-security-group" {
   tags = {
     Name = "rds-db-sg"
   }
-
 }
 
-# Create Database Instance Restored from DB Snapshots
-# terraform aws db instance
+# Create Database Instance
 resource "aws_db_instance" "database-instance" {
-  identifier             = "aws-goat-db"
-  allocated_storage      = 10
-  instance_class         = "db.t3.micro"
-  engine                 = "mysql"
-  engine_version         = "8.0"
-  username               = "root"
-  password               = "T2kVB3zgeN3YbrKS"
-  parameter_group_name   = "default.mysql8.0"
-  skip_final_snapshot    = true
-  availability_zone      = "us-east-1a"
-  db_subnet_group_name   = aws_db_subnet_group.database-subnet-group.name
-  vpc_security_group_ids = [aws_security_group.database-security-group.id]
+  identifier                = "aws-goat-db"
+  allocated_storage         = 10
+  instance_class            = "db.t3.micro"
+  engine                    = "mysql"
+  engine_version            = "8.0"
+  username                  = "root"
+  password                  = "T2kVB3zgeN3YbrKS"
+  parameter_group_name      = "default.mysql8.0"
+  skip_final_snapshot       = true
+  availability_zone         = "us-east-1a"
+  db_subnet_group_name      = aws_db_subnet_group.database-subnet-group.name
+  vpc_security_group_ids    = [aws_security_group.database-security-group.id]
+  storage_encrypted         = true
+  kms_key_id                = aws_kms_key.encryption_key.arn
+  auto_minor_version_upgrade = true
+  enabled_cloudwatch_logs_exports = ["error", "general", "slow_query"]
+  monitoring_interval       = 60
+  monitoring_role_arn      = aws_iam_role.rds_monitoring_role.arn
+  multi_az                 = true
+  iam_database_authentication_enabled = true
 }
 
+resource "aws_iam_role" "rds_monitoring_role" {
+  name = "rds-monitoring-role"
 
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "monitoring.rds.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "rds_monitoring_policy" {
+  role       = aws_iam_role.rds_monitoring_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+}
 
 resource "aws_security_group" "load_balancer_security_group" {
   name        = "Load-Balancer-SG"
@@ -151,13 +199,15 @@ resource "aws_security_group" "load_balancer_security_group" {
   vpc_id      = aws_vpc.lab-vpc.id
 
   ingress {
-    from_port   = 80
-    to_port     = 80
+    description = "HTTPS traffic"
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["10.0.0.0/8"]
   }
 
   egress {
+    description = "Allow all outbound traffic"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -167,8 +217,6 @@ resource "aws_security_group" "load_balancer_security_group" {
     Name = "aws-goat-m2-sg"
   }
 }
-
-
 
 resource "aws_iam_role" "ecs-instance-role" {
   name                 = "ecs-instance-role"
@@ -189,14 +237,9 @@ resource "aws_iam_role" "ecs-instance-role" {
   })
 }
 
-
 resource "aws_iam_role_policy_attachment" "ecs-instance-role-attachment-1" {
   role       = aws_iam_role.ecs-instance-role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
-}
-resource "aws_iam_role_policy_attachment" "ecs-instance-role-attachment-2" {
-  role       = aws_iam_role.ecs-instance-role.name
-  policy_arn = "arn:aws:iam::aws:policy/IAMFullAccess"
 }
 
 resource "aws_iam_role_policy_attachment" "ecs-instance-role-attachment-3" {
@@ -210,10 +253,17 @@ resource "aws_iam_policy" "ecs_instance_policy" {
     "Statement" : [
       {
         "Action" : [
-          "ssm:*",
-          "ssmmessages:*",
-          "ec2:RunInstances",
-          "ec2:Describe*"
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "ssm:GetParametersByPath",
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel",
+          "ec2:DescribeInstances",
+          "ec2:DescribeImages",
+          "ec2:DescribeSnapshots",
+          "ec2:DescribeVolumes"
         ],
         "Effect" : "Allow",
         "Resource" : "*",
@@ -230,16 +280,32 @@ resource "aws_iam_policy" "instance_boundary_policy" {
     "Statement" : [
       {
         "Action" : [
-          "iam:List*",
-          "iam:Get*",
+          "iam:ListRoles",
+          "iam:GetRole",
           "iam:PassRole",
-          "iam:PutRole*",
-          "ssm:*",
-          "ssmmessages:*",
-          "ec2:RunInstances",
-          "ec2:Describe*",
-          "ecs:*",
-          "ecr:*",
+          "iam:PutRolePolicy",
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "ssm:GetParametersByPath",
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel",
+          "ec2:DescribeInstances",
+          "ec2:DescribeImages",
+          "ec2:DescribeSnapshots",
+          "ec2:DescribeVolumes",
+          "ecs:CreateCluster",
+          "ecs:DeregisterContainerInstance",
+          "ecs:DiscoverPollEndpoint",
+          "ecs:Poll",
+          "ecs:RegisterContainerInstance",
+          "ecs:StartTelemetrySession",
+          "ecs:Submit*",
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ],
@@ -257,6 +323,7 @@ resource "aws_iam_instance_profile" "ec2-deployer-profile" {
   path = "/"
   role = aws_iam_role.ec2-deployer-role.id
 }
+
 resource "aws_iam_role" "ec2-deployer-role" {
   name = "ec2Deployer-role"
   path = "/"
@@ -275,13 +342,18 @@ resource "aws_iam_role" "ec2-deployer-role" {
   })
 }
 
-resource "aws_iam_policy" "ec2_deployer_admin_policy" {
-  name = "ec2DeployerAdmin-policy"
+resource "aws_iam_policy" "ec2_deployer_policy" {
+  name = "ec2DeployerMinimal-policy"
   policy = jsonencode({
     "Statement" : [
       {
         "Action" : [
-          "*"
+          "ec2:DescribeInstances",
+          "ec2:DescribeImages",
+          "ec2:DescribeSnapshots",
+          "ec2:DescribeVolumes",
+          "s3:GetObject",
+          "s3:PutObject"
         ],
         "Effect" : "Allow",
         "Resource" : "*",
@@ -294,7 +366,7 @@ resource "aws_iam_policy" "ec2_deployer_admin_policy" {
 
 resource "aws_iam_role_policy_attachment" "ec2-deployer-role-attachment" {
   role       = aws_iam_role.ec2-deployer-role.name
-  policy_arn = aws_iam_policy.ec2_deployer_admin_policy.arn
+  policy_arn = aws_iam_policy.ec2_deployer_policy.arn
 }
 
 resource "aws_iam_instance_profile" "ecs-instance-profile" {
@@ -302,6 +374,7 @@ resource "aws_iam_instance_profile" "ecs-instance-profile" {
   path = "/"
   role = aws_iam_role.ecs-instance-role.id
 }
+
 resource "aws_iam_role" "ecs-task-role" {
   name = "ecs-task-role"
   path = "/"
@@ -317,14 +390,14 @@ resource "aws_iam_role" "ecs-task-role" {
         "Action" : "sts:AssumeRole"
       }
     ]
-    }
-  )
+  })
 }
 
 resource "aws_iam_role_policy_attachment" "ecs-task-role-attachment" {
   role       = aws_iam_role.ecs-task-role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
+
 resource "aws_iam_role_policy_attachment" "ecs-task-role-attachment-2" {
   role       = aws_iam_role.ecs-task-role.name
   policy_arn = "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
@@ -335,7 +408,6 @@ resource "aws_iam_role_policy_attachment" "ecs-instance-role-attachment-ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-
 data "aws_ami" "ecs_optimized_ami" {
   most_recent = true
   owners      = ["amazon"]
@@ -345,7 +417,6 @@ data "aws_ami" "ecs_optimized_ami" {
     values = ["amzn2-ami-ecs-hvm-2.0.202*-x86_64-ebs"]
   }
 }
-
 
 resource "aws_launch_template" "ecs_launch_template" {
   name_prefix   = "ecs-launch-template-"
@@ -358,24 +429,51 @@ resource "aws_launch_template" "ecs_launch_template" {
 
   vpc_security_group_ids = [aws_security_group.ecs_sg.id]
   user_data              = base64encode(data.template_file.user_data.rendered)
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+    http_put_response_hop_limit = 1
+  }
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      volume_size = 20
+      volume_type = "gp3"
+      encrypted   = true
+      kms_key_id  = aws_kms_key.encryption_key.arn
+    }
+  }
 }
 
 resource "aws_autoscaling_group" "ecs_asg" {
   name                = "ECS-lab-asg"
-  vpc_zone_identifier = [aws_subnet.lab-subnet-public-1.id]
+  vpc_zone_identifier = [aws_subnet.lab-subnet-private-1.id]
   desired_capacity    = 1
   min_size            = 0
   max_size            = 1
+  enabled_metrics     = ["GroupMinSize", "GroupMaxSize", "GroupDesiredCapacity", "GroupInServiceInstances", "GroupTotalInstances"]
 
   launch_template {
     id      = aws_launch_template.ecs_launch_template.id
     version = "$Latest"
   }
-}
 
+  tag {
+    key                 = "Name"
+    value               = "ECS-ASG-Instance"
+    propagate_at_launch = true
+  }
+}
 
 resource "aws_ecs_cluster" "cluster" {
   name = "ecs-lab-cluster"
+
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
 
   tags = {
     name = "ecs-cluster-name"
@@ -395,7 +493,6 @@ resource "aws_ecs_task_definition" "task_definition" {
   requires_compatibilities = ["EC2"]
   task_role_arn            = aws_iam_role.ecs-task-role.arn
 
-  pid_mode = "host"
   volume {
     name      = "modules"
     host_path = "/lib/modules"
@@ -413,8 +510,6 @@ data "template_file" "task_definition_json" {
   ]
 }
 
-
-
 resource "aws_ecs_service" "worker" {
   name                              = "ecs_service_worker"
   cluster                           = aws_ecs_cluster.cluster.id
@@ -430,16 +525,99 @@ resource "aws_ecs_service" "worker" {
   depends_on = [aws_lb_listener.listener]
 }
 
+resource "aws_wafv2_web_acl" "alb_waf" {
+  name  = "aws-goat-m2-waf"
+  scope = "REGIONAL"
+
+  default_action {
+    allow {}
+  }
+
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 1
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = false
+      metric_name                 = "CommonRuleSetMetric"
+      sampled_requests_enabled    = false
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = false
+    metric_name                 = "WAFMetric"
+    sampled_requests_enabled    = false
+  }
+}
+
 resource "aws_alb" "application_load_balancer" {
   name               = "aws-goat-m2-alb"
   internal           = false
   load_balancer_type = "application"
-  subnets            = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  subnets            = [aws_subnet.lab-subnet-private-1.id, aws_subnet.lab-subnet-private-1b.id]
   security_groups    = [aws_security_group.load_balancer_security_group.id]
+  enable_deletion_protection = true
+
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs.bucket
+    prefix  = "alb-logs"
+    enabled = true
+  }
+
+  drop_invalid_header_fields = true
 
   tags = {
     Name = "aws-goat-m2-alb"
   }
+}
+
+resource "aws_wafv2_web_acl_association" "alb_waf_association" {
+  resource_arn = aws_alb.application_load_balancer.arn
+  web_acl_arn  = aws_wafv2_web_acl.alb_waf.arn
+}
+
+resource "aws_s3_bucket" "alb_logs" {
+  bucket        = "aws-goat-alb-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_public_access_block" "alb_logs" {
+  bucket = aws_s3_bucket.alb_logs.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_policy" "alb_logs" {
+  bucket = aws_s3_bucket.alb_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::127311923021:root"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.alb_logs.arn}/*"
+      }
+    ]
+  })
 }
 
 resource "aws_lb_target_group" "target_group" {
@@ -449,15 +627,38 @@ resource "aws_lb_target_group" "target_group" {
   target_type = "instance"
   vpc_id      = aws_vpc.lab-vpc.id
 
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
+    path                = "/"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 2
+  }
+
   tags = {
     Name = "aws-goat-m2-tg"
   }
 }
 
+resource "aws_acm_certificate" "alb_cert" {
+  domain_name       = "example.com"
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 resource "aws_lb_listener" "listener" {
   load_balancer_arn = aws_alb.application_load_balancer.id
-  port              = "80"
-  protocol          = "HTTP"
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+  certificate_arn   = aws_acm_certificate.alb_cert.arn
 
   default_action {
     type             = "forward"
@@ -465,10 +666,26 @@ resource "aws_lb_listener" "listener" {
   }
 }
 
+resource "aws_lb_listener" "listener_redirect" {
+  load_balancer_arn = aws_alb.application_load_balancer.id
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
 
 resource "aws_secretsmanager_secret" "rds_creds" {
   name                    = "RDS_CREDS"
   recovery_window_in_days = 0
+  kms_key_id             = aws_kms_key.encryption_key.arn
 }
 
 resource "aws_secretsmanager_secret_version" "secret_version" {
@@ -511,8 +728,6 @@ EOF
   ]
 }
 
-
-/* Creating a S3 Bucket for Terraform state file upload. */
 resource "aws_s3_bucket" "bucket_tf_files" {
   bucket        = "do-not-delete-awsgoat-state-files-${data.aws_caller_identity.current.account_id}"
   force_destroy = true
@@ -522,6 +737,15 @@ resource "aws_s3_bucket" "bucket_tf_files" {
   }
 }
 
+resource "aws_s3_bucket_public_access_block" "bucket_tf_files" {
+  bucket = aws_s3_bucket.bucket_tf_files.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
 output "ad_Target_URL" {
-  value = "${aws_alb.application_load_balancer.dns_name}:80/login.php"
+  value = "${aws_alb.application_load_balancer.dns_name}:443/login.php"
 }
